@@ -17,4 +17,6 @@ public interface PostRepository extends JpaRepository<Post, Long> {
     Page<Post> searchPublished(@Param("keyword") String keyword,
                                @Param("categoryId") Long categoryId,
                                Pageable pageable);
+
+    Page<Post> findByStatus(PostStatus status, Pageable pageable);
 }

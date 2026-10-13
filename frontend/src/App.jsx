@@ -52,6 +52,16 @@ function App() {
     }
   }
 
+  async function reportPost(id) {
+    try {
+      await api(`/posts/${id}/report`, { method: 'POST' })
+      setNotice('Bài đăng đã được báo cáo')
+      await loadPosts()
+    } catch (error) {
+      setNotice(error.message)
+    }
+  }
+
   function logout() {
     clearCredentials()
     setUser(null)
@@ -112,9 +122,32 @@ function App() {
             </section>
 
             <section className="post-grid">
-              {posts.map((post) => <PostCard key={post.id} post={post} onOpen={openPost} />)}
+              {posts.map((post) => (
+                <PostCard key={post.id} post={post} user={user} onOpen={openPost} onReport={reportPost} />
+              ))}
               {!posts.length && <div className="empty">Chưa có bài đăng phù hợp.</div>}
             </section>
+
+            {user?.role === 'ADMIN' && (
+              <section className="admin-reports">
+                <h2>Bài đăng đang kiểm duyệt</h2>
+                <div>{posts.filter(p => p.status === 'REPORTED').length} bài đăng cần xử lý</div>
+                <div className="report-list">
+                  {posts.filter(p => p.status === 'REPORTED').map((post) => (
+                    <div key={post.id} className="report-item">
+                      <span>{post.title}</span>
+                      <span>Tác giả: {post.author.displayName}</span>
+                      <button className="button secondary small" onClick={() => openPost(post.id)}>Xem chi tiết</button>
+                      <button className="button danger small" onClick={() => {
+                        api(`/posts/${post.id}/resolve`, { method: 'PATCH' })
+                          .then(() => { setNotice('Bài đã được giải quyết'); loadPosts() })
+                          .catch(e => setNotice(e.message))
+                      }}>Giải quyết</button>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
           </>
         )}
       </main>
@@ -130,7 +163,8 @@ function App() {
   )
 }
 
-function PostCard({ post, onOpen }) {
+function PostCard({ post, user, onOpen, onReport }) {
+  const isAuthor = user && post.author && user.id === post.author.id
   return (
     <article className="post-card" onClick={() => onOpen(post.id)}>
       <div className="card-top"><span className="tag">{post.category.name}</span><span>{formatDate(post.createdAt)}</span></div>
@@ -140,6 +174,15 @@ function PostCard({ post, onOpen }) {
         <span>{post.author.displayName}</span>
         <span>♥ {post.reactionCount} · {post.commentCount} bình luận</span>
       </div>
+      {user && !isAuthor && (
+        <button className="button small" onClick={(event) => { event.stopPropagation(); onReport(post.id) }}>
+          {post.status !== 'REPORTED' ? 'Báo cáo' : 'Đã báo cáo'}
+        </button>
+      )}
+      {user?.role === 'ADMIN' && (
+        <button className="button danger small"
+          onClick={(event) => { event.stopPropagation(); onOpen(post.id) }}>Xem chi tiết</button>
+      )}
     </article>
   )
 }
@@ -220,11 +263,13 @@ function AuthDialog({ onClose, onLogin }) {
 
   async function submit(event) {
     event.preventDefault()
+    const username = form.username.trim().toLowerCase()
+    const payload = { ...form, username }
     try {
       if (mode === 'register') {
-        await api('/auth/register', { method: 'POST', body: JSON.stringify(form) })
+        await api('/auth/register', { method: 'POST', body: JSON.stringify(payload) })
       }
-      setCredentials(form.username, form.password)
+      setCredentials(username, form.password)
       onLogin(await api('/auth/me'))
     } catch (requestError) {
       clearCredentials()
