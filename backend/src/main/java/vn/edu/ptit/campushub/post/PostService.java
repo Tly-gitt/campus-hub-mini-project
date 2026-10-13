@@ -54,6 +54,16 @@ public class PostService {
                 result.getTotalPages());
     }
 
+    public PageView<PostView> searchReported(String keyword, int page, int size, Principal principal) {
+        int safeSize = Math.min(Math.max(size, 1), 50);
+        Page<Post> result = posts.findByStatus(PostStatus.REPORTED, PageRequest.of(Math.max(page, 0), safeSize, Sort.by(Sort.Direction.DESC, "createdAt")));
+        List<PostView> content = result.getContent().stream()
+                .map(post -> toView(post, principal, false))
+                .toList();
+        return new PageView<>(content, result.getNumber(), result.getSize(), result.getTotalElements(),
+                result.getTotalPages());
+    }
+
     public PostView findOne(Long id, Principal principal) {
         return toView(findVisiblePost(id, principal), principal, true);
     }
@@ -81,8 +91,30 @@ public class PostService {
         if (status == PostStatus.HIDDEN && user.getRole() != Role.ADMIN) {
             throw new ApiException(HttpStatus.FORBIDDEN, "Chỉ quản trị viên được ẩn bài đăng");
         }
+        if (status == PostStatus.PUBLISHED && post.getStatus() == PostStatus.REPORTED) {
+            // Admin can republish a reported post
+        } else if (status == PostStatus.REPORTED) {
+            // Any authenticated user can report a post
+            if (user == null) {
+                throw new ApiException(HttpStatus.UNAUTHORIZED, "Vui lòng đăng nhập");
+            }
+            // Post is now marked as reported
+        } else if (post.getStatus() == PostStatus.REPORTED && status != PostStatus.REPORTED && user.getRole() != Role.ADMIN) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "Bài viết đang được kiểm duyệt, chỉ quản trị viên được thay đổi trạng thái");
+        }
         requireOwnerOrAdmin(post, user);
         post.changeStatus(status);
+        return toView(post, principal, true);
+    }
+
+    @Transactional
+    public PostView resolveReport(Long id, Principal principal) {
+        Post post = findPost(id);
+        User user = currentUser(principal);
+        if (user.getRole() != Role.ADMIN) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "Chỉ quản trị viên được xử lý báo cáo");
+        }
+        post.changeStatus(PostStatus.PUBLISHED); // or RESOLVED depending on business logic
         return toView(post, principal, true);
     }
 
@@ -115,6 +147,12 @@ public class PostService {
                     reactions.save(new Reaction(post, user));
                     return true;
                 });
+    }
+
+    @Transactional
+    public void report(Long id, Principal principal) {
+        Post post = findVisiblePost(id, principal);
+        post.changeStatus(PostStatus.REPORTED);
     }
 
     private PostView toView(Post post, Principal principal, boolean includeComments) {

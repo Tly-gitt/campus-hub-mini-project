@@ -40,6 +40,19 @@ public class PostController {
         return service.search(keyword, categoryId, page, size, principal);
     }
 
+    @GetMapping("/reported")
+    PageView<PostView> searchReported(@RequestParam(defaultValue = "") String keyword,
+                                      @RequestParam(defaultValue = "0") int page,
+                                      @RequestParam(defaultValue = "12") int size,
+                                      Principal principal) {
+        return service.searchReported(keyword, page, size, principal);
+    }
+
+    @PatchMapping("/{id}/resolve")
+    PostView resolveReport(@PathVariable Long id, Principal principal) {
+        return service.resolveReport(id, principal);
+    }
+
     @GetMapping("/{id}")
     PostView findOne(@PathVariable Long id, Principal principal) {
         return service.findOne(id, principal);
@@ -78,5 +91,10 @@ public class PostController {
     @PostMapping("/{id}/reaction")
     Map<String, Boolean> toggleReaction(@PathVariable Long id, Principal principal) {
         return Map.of("reacted", service.toggleReaction(id, principal));
+    }
+
+    @PostMapping("/{id}/report")
+    void report(@PathVariable Long id, Principal principal) {
+        service.report(id, principal);
     }
 }
